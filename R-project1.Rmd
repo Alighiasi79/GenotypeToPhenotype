@@ -1,0 +1,206 @@
+---
+title: "R-project1"
+author: "nobody"
+date: "2023-05-11"
+output: pdf_document
+latex_engine: pdflatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#libraries
+library(MASS)
+library(qqman)
+library(ggplot2)
+```
+__\textcolor{blue}{\Large 1st question}__
+
+a,b)
+
+```{r}
+#reading file
+phenotype_data=read.csv("omics2023_pheno+pop.csv",header=FALSE)
+
+#calculating sample size
+print(paste("Total sample size is",length(phenotype_data[, 1])))
+```
+c)
+```{r}
+#Histogram
+y=phenotype_data[,2]
+hist(y, main = "Histogram of HDL levels", xlab = "HDL", ylab = "Frequency(%)")
+```
+__\textcolor{blue}{\Large 2nd question}__
+
+a,b)
+```{r}
+#reading file
+genotype_data=read.csv("omics2023_genotypes.csv",header=FALSE)
+
+#calculating SNP number
+print(paste("Total SNPs number is",length(genotype_data[1,])+1))
+```
+__\textcolor{blue}{\Large 3rd question}__
+
+a)
+```{r}
+#creating beta_a matrix
+beta_a=data.frame(matrix(nrow=nrow(genotype_data), ncol=ncol(genotype_data)))
+beta_a[genotype_data=="0"]=-1
+beta_a[genotype_data=="1"]=0
+beta_a[genotype_data=="2"]=1
+beta_a = apply(beta_a, 2, as.numeric) # convert each column to numeric
+
+#creating beta_d matrix
+beta_d=data.frame(matrix(nrow=nrow(genotype_data), ncol=ncol(genotype_data)))
+beta_d[genotype_data=="0"]=-1
+beta_d[genotype_data=="1"]=1
+beta_d[genotype_data=="2"]=-1
+beta_d = apply(beta_d, 2, as.numeric) # convert each column to numeric
+
+y=cbind(phenotype_data[,2])
+p_values=vector(length=ncol(genotype_data))
+y_avg=mean(y)
+#evaluating p_value,SSE,SSM,F-statistic for each SNP
+for(i in 1:ncol(genotype_data)){
+  #creating x matrix for each SNP
+  x = cbind(1, as.integer(beta_a[,i]), as.integer(beta_d[,i]))
+
+  #finding beta_hat based on MLE
+  beta_hat=ginv(t(x)%*%x)%*%t(x)%*%y
+
+  #finding y_hat based on x and beta_hat
+  y_hat=x%*%beta_hat
+
+  #SSM,SSE
+  ssm=0
+  sse=0
+  for(j in 1:nrow(y)){
+    ssm=ssm+((y_hat[j,]-y_avg)^2)
+    sse=sse+((y[j,]-y_hat[j,])^2)
+    }
+
+  #MSM,MSE,F-STATISIC,P_VALUE
+  msm=ssm/2
+  mse=sse/(nrow(y)-3)
+  f=msm/mse
+  p_values[i]=pf(f,df1=2,df2=(nrow(y)-3),lower.tail = FALSE)
+  }#p_values are calculated here
+```
+
+b)
+```{r}
+a=c(1:ncol(genotype_data))
+b=-log10(p_values)
+pframe=data.frame(a,b)
+ggplot(pframe, aes(x=a,y=b)) + geom_point() + labs(x="SNP number",y="p_value")  + ggtitle("p-value for each SNP")
+```
+__\textcolor{blue}{\Large 4th question}__
+```{r}
+significants=0
+for(i in 1:length(p_values)){
+  if (p_values[i]<(0.05/ncol(genotype_data))){
+    significants=significants+1
+  }
+}
+print(paste("number of SNPs which are significant is",significants))
+```
+__\textcolor{blue}{\Large 5th question}__
+```{r}
+#counting first people population
+print(paste("First people poplution is",sum(startsWith(phenotype_data[,1], "HG"))))
+
+#counting second people population
+print(paste("Second people poplution is",sum(startsWith(phenotype_data[,1],"NA"))))
+```
+__\textcolor{blue}{\Large 6th question}__
+
+a)
+```{r}
+#calculating z variable for each "HG" and "NA" person
+z=matrix(rep(-1,nrow(phenotype_data)),nrow=nrow(phenotype_data))
+z[grep("^NA",phenotype_data[,1])]=1
+
+
+#evaluating p_value,SSE,F-statistic for each SNP with XZ covariate
+p01_values=vector(length=ncol(genotype_data))
+for(i in 1:ncol(genotype_data)){
+  
+  #creating x0 for Teta0 assumption; meaning that we do not need xa, xd for calculation
+  x0 = cbind(1, z)
+
+  #creating x1 for Teta0 assumption; meaning that we need 1, xa, xd, z for calculation
+  x1 = cbind(1, as.integer(beta_a[,i]), as.integer(beta_d[,i]), z)
+
+  #finding beta0_hat based on MLE
+  beta0_hat=ginv(t(x0)%*%x0)%*%t(x0)%*%y
+  
+  #finding beta1_hat based on MLE
+  beta1_hat=ginv(t(x1)%*%x1)%*%t(x1)%*%y
+  
+  #finding y0_hat based on x and beta_hat
+  y0_hat=x0%*%beta0_hat
+  
+  #finding y1_hat based on x and beta_hat
+  y1_hat=x1%*%beta1_hat
+
+  #SSE0,SSE1
+  sse0=0
+  sse1=0
+  for(j in 1:nrow(y)){
+    sse0=sse0+((y[j,]-y0_hat[j,])^2)
+    sse1=sse1+((y[j,]-y1_hat[j,])^2)
+    }
+
+  #F-STATISIC,P_VALUE
+  f01=((sse0-sse1)/3)/(sse1/(nrow(y)-4))
+  p01_values[i]=pf(f01,df1=3,df2=(nrow(y)-4),lower.tail = FALSE)
+  }#p01_values are calculated here
+```
+
+b)
+```{r}
+a01=c(1:ncol(genotype_data))
+b01=-log10(p01_values)
+p01frame=data.frame(a,b)
+ggplot(p01frame, aes(x=a01,y=b01)) + geom_point() + labs(x="SNP number",y="p-value") + ggtitle("p-value for each SNP considering z covariate")
+```
+__\textcolor{blue}{\Large 7th question}__
+```{r}
+significants01=0
+for(i in 1:length(p01_values)){
+  if (p01_values[i]<(0.05/ncol(genotype_data))){
+    significants01=significants01+1
+  }
+}
+print(paste("number of SNPs which are significant considering z covariate, is",significants01))
+```
+__\textcolor{blue}{\Large 8th question}__
+
+Sometimes without considering covariates like age, sex and some other factors, We conclude some significant relationships between an x variable and y result which is not true because of something like population group biased sampling. Knowing this information, It is wisely to conclude the 7th question significant SNPs as the better consideration.
+
+__\textcolor{blue}{\Large 9th question}__
+
+Crossing-over accident makes the probability of SNPs inheritance much more complex than the first thought; Due to this, It is not really possible to attribute significant changes in phenotype to an specific SNP(Some near SNPs will be inherited simultaneously with the real game-changing SNP(s)). Those peaks that were displayed in the 7th question are those that are such near to the game-changing SNP(s) that we cannot conclude which ones of them are not those that We are looking for.
+
+__\textcolor{blue}{\Large 10th question}__
+
+a)
+A causal polymorphism is a type of genetic variation that is directly responsible for a particular trait or disease phenotype. In other words, the presence or absence of the polymorphism is the direct cause of the phenotype. The term "polymorphism" refers to the fact that the variation occurs in more than one form in the population, with each form having a significant frequency. The term "causal" indicates that the variation has a direct causal relationship with the phenotype, and that changing the variation leads to a change in the phenotype.
+
+b)
+A p-value is a statistical measure that indicates the evidence against the null hypothesis. Specifically, it is the probability of obtaining a test statistic at least as extreme as the one observed in a sample, assuming that the null hypothesis is true.
+
+c)
+The power of a hypothesis test is defined as the probability of correctly rejecting the null hypothesis when it is false, or equivalently, the probability of not making a type II error.
+
+d)
+
+i, Crossing-over issues which were explained in the 9th question.
+
+ii, Unnormalized data to age, sex, population group, ... as We've seen this kind of problem in the difference between 4th question and 7th question answer.
+
+iii, Small sampling size which makes the problem of not having truely sufficient testings; therefore having a false-positive result.
